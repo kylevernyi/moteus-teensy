@@ -74,10 +74,8 @@ class Moteus {
     Options() {}
   };
 
-  Moteus(ACAN2517FD& can_bus,
-         const Options& options = {})
-      : can_bus_(can_bus),
-        options_(options) {
+  Moteus(const Options& options = {})
+      : options_(options) {
     mm::CanData can_data;
     mm::WriteCanData query_write(&can_data);
     mm::Query::Make(&query_write, options_.query_format);
@@ -558,13 +556,8 @@ class Moteus {
   bool Poll() {
     const auto now = micros();
 
-    // Ensure any interrupts have been handled.
-    can_bus_.poll();
-
-    if (!can_bus_.available()) { return false; }
-
     CANFDMessage rx_msg;
-    can_bus_.receive(rx_msg);
+    if (!ACAN_T4::can3.receiveFD(rx_msg)) { return false;} 
 
     const int8_t source = (rx_msg.id >> 8) & 0x7f;
     const int8_t destination = (rx_msg.id & 0x7f);
@@ -626,21 +619,15 @@ class Moteus {
     can_message.ext = true;
 
     PadCan(&can_message);
-
-    // To work even when the ACAN2517FD doesn't have functioning
-    // interrupts, we will just poll it before and after attempting to
-    // send our message.  This slows things down, but we're on an
-    // Arduino, so who cares?
-    can_bus_.poll();
-    can_bus_.tryToSend(can_message);
-    can_bus_.poll();
+    
+    int32_t send_status = ACAN_T4::can3.tryToSendReturnStatusFD(can_message);
 
     return frame.reply_required;
   }
 
   bool ExecuteSingleCommand(const mm::CanFdFrame& frame) {
     const bool reply_required = BeginSingleCommand(frame);
-
+    
     if (!reply_required) { return false; }
 
     auto start = micros();
@@ -737,7 +724,7 @@ class Moteus {
     msg->len = new_size;
   }
 
-  ACAN2517FD& can_bus_;
+  // ACAN2517FD& can_bus_;
   const Options options_;
 
   Result last_result_;
